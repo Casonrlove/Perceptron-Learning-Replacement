@@ -8,11 +8,11 @@
 /*************************************************************************/
 /******************************** CLASS **********************************/
 
-namespace {
+namespace{
     /* ATTRIBUTES */
 
     //perceptron bits
-    size_t perceptron_bits = 0;
+    size_t perceptron_bits    = 0;
 
     //perceptron history
     size_t perceptron_history = 0;
@@ -41,7 +41,7 @@ namespace {
     //sampler entry struct - 
     struct SamplerEntry {
         uint64_t address; //address of our stored cache block. Only use 15 bits to check tags (see sampler for details)
-        uint64_t lru_bits; //sampler LRU, only use first 4 bits, lower = more recently used
+        uint64_t lru_bits; //sampler LRU. For simulation purposes we use current clock cycle, in actuality number of bits used would be NUM_WAYS
         uint64_t yout; //most recent prediction calculation value, 9 bits used
         uint64_t pc_0_hash; //feature 1, 8 bits used
         uint64_t pc_1_hash; //feature 2, 8 bits used
@@ -64,9 +64,10 @@ namespace {
     //TODO: prediction table vector
 
 
-    //vectors representing extra cache block information (block 10 has lru bits stored in entry 10 of this vector)
+    //vectors representing extra cache block information (block 10 would have lru bits stored in entry 10 of this vector)
     std::map<CACHE*, std::vector<uint64_t>> lru_bits; //Predictor lru vector
     std::map<CACHE*, std::vector<uint64_t>> reuse_bits; //Predictor reuse vector
+
 
 }
 
@@ -80,7 +81,7 @@ namespace {
 /*************************************************************************/
 /************************ INITIALIZE REPLACEMENT *************************/
 
-void CACHE::initialize_replacement() {
+void CACHE::initialize_replacement() { 
     //initialize sampler vector
     ::sampler_table[this] = std::vector<SamplerEntry>(::sampler_sets * ::sampler_num_ways);
 
@@ -93,7 +94,7 @@ void CACHE::initialize_replacement() {
     }
 
 
-    //TODO: initialize extra cache bits and backup LRU bits --> ::last_used_cycles[this] = std::vector<uint64_t>(NUM_SET * NUM_WAY); 
+    //TODO: initialize extra cache reuse bits and backup LRU bits --> ::last_used_cycles[this] = std::vector<uint64_t>(NUM_SET * NUM_WAY); 
     //TODO: initialize feature values
 
 }
@@ -112,13 +113,15 @@ void CACHE::initialize_replacement() {
 uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t set, const BLOCK* current_set, uint64_t ip, uint64_t full_addr, uint32_t type)
 {
     //TODO: FIND REPLACEMENT
-        //first: check reuse bits
-        //second (as backup if all are marked for reuse): check LRU bits
-
-    //NOTE: code below is from SHIP, similar to what we need to do except instead of using maxRRPV we use above criteria
-    //      delete it eventually once we're done using it as reference
+        //first: check reuse bits for a 0.
+        //second (as backup if all are marked for reuse): check backup LRU bits
+    
 
 
+
+  //NOTE: code below is from SHIP, similar to what we need to do except instead of using maxRRPV we use above criteria
+  // 
+  // 
   // look for the maxRRPV line
   //auto begin = std::next(std::begin(::rrpv_values[this]), set * NUM_WAY);
   //auto end = std::next(begin, NUM_WAY);
@@ -146,43 +149,78 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 
 void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit)
 {
-    //TODO: check if cache hit or miss
-    //TODO: update feature values (pc value, cache tag)... dont forget to shift as well as truncate extra bits (see above)
-    //TODO: calculate yout (dont forget to update value in the sampler)
-    //TODO: if miss, check for bypass or decide to replace
-    //TODO: if hit, update reuse bit with current features
-    // 
-    //TODO: do sampler stuff 
-    //  (check if sampled set, check if tag in sampler, store yout & hashed features in sampler with block, handle replacement if necessary)
+    //NOTE: using bitmask to get rid of extra bits because our theoretical cache only stores 8 bits per feature
+    //feature values
+    pc_3 = pc_2;
+    pc_2 = pc_1;
+    pc_1 = pc_0;
+    pc_0 = ip;
 
+    //feature hashes
+    uint64_t pc_3_hash = ((pc_3 >> 3) ^ pc_0) & champsim::bitmask(8);
+    uint64_t pc_2_hash = ((pc_2 >> 2) ^ pc_0) & champsim::bitmask(8);
+    uint64_t pc_1_hash = ((pc_1 >> 1) ^ pc_0) & champsim::bitmask(8);
+    uint64_t pc_0_hash = ((pc_0 >> 2) ^ pc_0) & champsim::bitmask(8);
+    uint64_t tag_1_hash = ((full_addr >> 4) ^ pc_0) & champsim::bitmask(8);
+    uint64_t tag_2_hash = ((full_addr >> 7) ^ pc_0) & champsim::bitmask(8);
+
+    //TODO: calculate yout (dont forget to update value in the sampler)
+    uint64_t yout;
+        //use hashed features as index in feature table to access weights
+        //sum all the weights and calc yout
+        
+    //TODO: update reuse bit with current yout
+    if (yout < replace_threshold) {
+        //set re-use bit of current cache block to 1
+    }
+    
+
+
+
+    //TODO: do sampler stuff    
+    /* SAMPLER STUFF */
     //check if sampled set, and if we find one then do training
     auto sample = std::find(std::begin(::sampler_cache_sets[this]), std::end(::sampler_cache_sets[this]), set);
     if (sample != std::end(::sampler_cache_sets[this])) {
-        //check for tag match in the set
+
+        //start and end of our sample set
         auto start = std::begin(::sampler_table[this]) + sampler_num_ways * (sample - std::begin(::sampler_cache_sets[this]));
         auto end = start + ::sampler_num_ways;
 
+        //check for tag match in the set
         //very fun lambda function that compares 15 tag bits of sampler address with 15 tag bits of incoming block address.
-        auto compare_addr = [cache_address = full_addr, mask = 15, shift = (OFFSET_BITS + champsim::lg2(::sampler_sets))](auto sampler)
+        auto compare_addr = [cache_address = full_addr, mask = 15, shift = (OFFSET_BITS + champsim::lg2(::sampler_sets))](auto sampler) 
             {return ((cache_address >> shift) & champsim::bitmask(15)) == ((sampler.address >> shift) & champsim::bitmask(15)); };
         auto tag_found = std::find_if(start, end, compare_addr);
 
-        //if tag in sampler, we update yout, update input hash values, update LRU values, and then update weights based on prediction
-        //otherwise, we find LRU, update weights, update LRU values, then store Yout, input hash values, and tag
+        //if tag in sampler, we update yout, update input hash values, update LRU value, and then update weights based on prediction
         if (tag_found != end) {
-
-
-
+            //decrement weights of feature table for current features if Yout is above the theta threshold
+            SamplerEntry* old_sample = &(*tag_found);
+            if (old_sample->yout > sampler_threshold)
+                //TODO: decrement weights
+            
+            //update the current sample's hashed feature values, Yout, and LRU value
+            *old_sample = { full_addr, current_cycle, yout, pc_0_hash, pc_1_hash, pc_2_hash, pc_3_hash, tag_1_hash, tag_2_hash };
         }
         else {
+            //find LRU (lowest clock cycle) sample within a given set
+            auto compare_lru = [](const SamplerEntry& a, const SamplerEntry& b) {return a.lru_bits < b.lru_bits; };
+            SamplerEntry* throwaway_sample = &(*std::min_element(start, end, compare_lru));
 
+            //check stored yout of that sample, compare to threshold, if below the theta threshold, we increment the weights for the corresponding feature maps
+            if (throwaway_sample->yout < sampler_threshold) {
+                //TODO: increment weights
+            }
+                
+            //replace sample struct with new struct that has current hashed feature values as well as the current cache block's Yout, tag, and lru (clock cycle)
+            *throwaway_sample = { full_addr, current_cycle, yout, pc_0_hash, pc_1_hash, pc_2_hash, pc_3_hash, tag_1_hash, tag_2_hash };          
         }
-
     }
 
     //NOTE: for saturating counters, dont forget to make sure they saturate at the algorithm's specifcation
     //  for example, a "6 bit saturating counter" that uses int_32t, should saturate between -32 or 32, not 2 billion or whatever
-
+  
 
 
   //LRU stuff (backup)

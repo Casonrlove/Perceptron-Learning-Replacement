@@ -20,13 +20,6 @@ namespace{
     //number of perceptrons
     size_t num_of_perceptrons = 0;
 
-    //FEATURES (from the paper)
-    // 1) PCi shifted right by 2, for i = 0.
-    //2) The three values of PCi shifted right by i, for 1 ≤ i ≤ 3.
-    //3) The tag of the current block shifted right by 4,
-    //4) The tag of the current block shifted right by 7.
-    //PC values for 3 most recent LLC accesses (pc_0 is curr access)
-
     //Vars for keeping track of previous PCs
     size_t pc_0 = 0;
     size_t pc_1 = 0;
@@ -54,27 +47,23 @@ namespace{
     size_t sampler_num_ways = 16;
     size_t sampler_table_size = sampler_sets * sampler_num_ways;
 
-    //TODO: prediction table struct
-    struct PredictorTable
-    {
-        /* data */
-    };
+    // 6 feature tables (from the paper), 256 entries of 6 bits saturating counters [-32, +31]
+    // index via -> (hashed feature value) XOR (PC)
+    std::vector<int> pc_0_feature(256); // 1)PCi shifted right by 2, for i = 0.
+    std::vector<int> pc_1_feature(256); // 2)The three values of PCi shifted right by i, for 1 ≤ i ≤ 3.
+    std::vector<int> pc_2_feature(256);
+    std::vector<int> pc_3_feature(256);
+    std::vector<int> tag_1_feature(256); // 3)The tag of the current block shifted right by 4,
+    std::vector<int> tag_2_feature(256); // 4)The tag of the current block shifted right by 7.
     
-
     //vectors representing physical tables (vectors are mapped to their corresponding cache via its address)
 
-    std::map<CACHE*, std::vector<SamplerEntry>> sampler_table;   //sampler vector table - indexed via (set_id * sampler_num_ways + way_id)
+    std::map<CACHE*, std::vector<SamplerEntry>> sampler_table; //sampler vector table - indexed via (set_id * sampler_num_ways + way_id)
     std::map<CACHE*, std::vector<uint64_t>> sampler_cache_sets; //value V is cache set id, index I is sampler set ID.
-
-    //TODO: prediction table vector
-    std::map<CACHE*, std::vector<PredictorTable>> predictor_table;
-    
 
     //vectors representing extra cache block information (block 10 would have lru bits stored in entry 10 of this vector)
     std::map<CACHE*, std::vector<uint64_t>> lru_bits; //Predictor lru vector
     std::map<CACHE*, std::vector<uint64_t>> reuse_bits; //Predictor reuse vector
-
-
 }
 
 /*************************************************************************/
@@ -102,7 +91,6 @@ void CACHE::initialize_replacement() {
 
     //TODO: initialize extra cache reuse bits and backup LRU bits --> ::last_used_cycles[this] = std::vector<uint64_t>(NUM_SET * NUM_WAY); 
     //TODO: initialize feature values
-
 }
 
 /*************************************************************************/
@@ -163,21 +151,29 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
     pc_0 = ip;
 
     //feature hashes
-    uint64_t pc_3_hash = ((pc_3 >> 3) ^ pc_0) & champsim::bitmask(8);
-    uint64_t pc_2_hash = ((pc_2 >> 2) ^ pc_0) & champsim::bitmask(8);
-    uint64_t pc_1_hash = ((pc_1 >> 1) ^ pc_0) & champsim::bitmask(8);
     uint64_t pc_0_hash = ((pc_0 >> 2) ^ pc_0) & champsim::bitmask(8);
+    uint64_t pc_1_hash = ((pc_1 >> 1) ^ pc_0) & champsim::bitmask(8);
+    uint64_t pc_2_hash = ((pc_2 >> 2) ^ pc_0) & champsim::bitmask(8);
+    uint64_t pc_3_hash = ((pc_3 >> 3) ^ pc_0) & champsim::bitmask(8);
     uint64_t tag_1_hash = ((full_addr >> 4) ^ pc_0) & champsim::bitmask(8);
     uint64_t tag_2_hash = ((full_addr >> 7) ^ pc_0) & champsim::bitmask(8);
 
     //TODO: calculate yout (dont forget to update value in the sampler)
     uint64_t yout;
-        //use hashed features as index in feature table to access weights
-        //sum all the weights and calc yout
+    //use hashed features as index in feature table to access weights and sum all the weights and calc yout
+    //since weights are signed, summation is signed
+    int summed_weight = 0;
+    summed_weight += pc_0_feature[pc_0_hash];
+    summed_weight += pc_1_feature[pc_1_hash];
+    summed_weight += pc_2_feature[pc_2_hash];
+    summed_weight += pc_3_feature[pc_3_hash];
+    summed_weight += tag_1_feature[tag_1_hash];
+    summed_weight += tag_2_feature[tag_2_hash];
         
     //TODO: update reuse bit with current yout
     if (yout < replace_threshold) {
         //set re-use bit of current cache block to 1
+        //decrements weights on access and increments weights on eviction
     }
     
 

@@ -18,15 +18,15 @@ namespace{
     size_t pc_3 = 0;
 
     //thresholds
-    constexpr bypass_threshold = 3;
-    constexpr size_t replace_threshold = 124;
-    constexpr size_t sampler_threshold = 68;
+    constexpr uint64_t bypass_threshold = 3;
+    constexpr uint64_t replace_threshold = 124;
+    constexpr uint64_t sampler_threshold = 68;
 
     //sampler entry struct -
     struct SamplerEntry {
         uint64_t address; //address of our stored cache block. Only use 15 bits to check tags (see sampler for details)
         uint64_t lru_bits; //sampler LRU. For simulation purposes we use current clock cycle, in actuality number of bits used would be NUM_WAYS
-        uint64_t yout; //most recent prediction calculation value, 9 bits used
+        int32_t yout; //most recent prediction calculation value, 9 bits used
         uint64_t pc_0_hash; //feature 1, 8 bits used
         uint64_t pc_1_hash; //feature 2, 8 bits used
         uint64_t pc_2_hash; //feature 3, 8 bits used
@@ -54,8 +54,7 @@ namespace{
 
     //vectors representing extra cache block information (block 10 would have lru bits stored in entry 10 of this vector)
     std::map<CACHE*, std::vector<uint64_t>> lru_bits; //Predictor lru vector
-    std::map<CACHE*, std::vector<uint64_t>> reuse_bits; //Predictor reuse vector
-    std::r
+    std::map<CACHE*, std::vector<bool>> reuse_bits; //reuse "bits". True = reuse
 
     bool checkLessThanZero(int number)
     {
@@ -74,8 +73,10 @@ namespace{
 /************************ INITIALIZE REPLACEMENT *************************/
 
 void CACHE::initialize_replacement() {
-    //initialize sampler vector
+    //initialize sampler vector, cache reuse bits and backup LRU bits
     ::sampler_table[this] = std::vector<SamplerEntry>(::sampler_sets * ::sampler_num_ways);
+    ::reuse_bits[this] = std::vector<bool>(NUM_SET * NUM_WAY, false);
+    ::lru_bits[this] = std::vector<uint64_t>(NUM_SET * NUM_WAY, current_cycle);
 
     //random number (borrowing this idea from other champsim replacement code because I don't know whether I'm allowed to include new libs like <time> and <cstdlib>
     uint64_t random_number = 122053342;
@@ -84,10 +85,6 @@ void CACHE::initialize_replacement() {
         ::sampler_cache_sets[this].push_back(random_number % sampler_sets);
         random_number = random_number * random_number + random_offset;
     }
-
-
-    //TODO: initialize extra cache reuse bits and backup LRU bits --> ::last_used_cycles[this] = std::vector<uint64_t>(NUM_SET * NUM_WAY); 
-    //TODO: initialize feature values
 }
 
 /*************************************************************************/
@@ -121,7 +118,7 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     else
     {
         /* REPLACE WAY */
-        for (auto way = 0; way < current_set->NUM_WAY; way++)
+        for (auto way = 0; way < NUM_WAY; way++)
         {
             /* code */
             //check to replace
@@ -178,29 +175,29 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
     uint64_t tag_1_hash = ((full_addr >> 4) ^ pc_0) & champsim::bitmask(8);
     uint64_t tag_2_hash = ((full_addr >> 7) ^ pc_0) & champsim::bitmask(8);
 
-    //TODO: calculate yout (dont forget to update value in the sampler)
-    uint64_t yout;
     //use hashed features as index in feature table to access weights and sum all the weights and calc yout
     //since weights are signed, summation is signed
-    int summed_weight = 0;
+    int32_t yout;
+    int32_t summed_weight = 0;
     summed_weight += pc_0_feature[pc_0_hash];
     summed_weight += pc_1_feature[pc_1_hash];
     summed_weight += pc_2_feature[pc_2_hash];
     summed_weight += pc_3_feature[pc_3_hash];
     summed_weight += tag_1_feature[tag_1_hash];
     summed_weight += tag_2_feature[tag_2_hash];
-        
-    //TODO: update reuse bit with current yout
+    yout = summed_weight;
+
+    //update reuse bit with current yout
     if (yout < replace_threshold) {
-        //set re-use bit of current cache block to 1
-        //decrements weights on access and increments weights on eviction
+        reuse_bits[this].at(NUM_SET * set + way) = true;
     }
-    
+    else
+    {
+        reuse_bits[this].at(NUM_SET * set + way) = false;
+    }
 
-
-
-    //TODO: do sampler stuff
     /* SAMPLER STUFF */
+
     //check if sampled set, and if we find one then do training
     auto sample = std::find(std::begin(::sampler_cache_sets[this]), std::end(::sampler_cache_sets[this]), set);
     if (sample != std::end(::sampler_cache_sets[this])) {

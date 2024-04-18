@@ -18,9 +18,9 @@ namespace{
     size_t pc_3 = 0;
 
     //thresholds
-    constexpr uint64_t bypass_threshold = 3;
-    constexpr uint64_t replace_threshold = 124;
-    constexpr uint64_t sampler_threshold = 68;
+    constexpr size_t bypass_threshold = 3;
+    constexpr size_t replace_threshold = 124;
+    constexpr size_t sampler_threshold = 68;
 
     //sampler entry struct -
     struct SamplerEntry {
@@ -54,7 +54,7 @@ namespace{
 
     //vectors representing extra cache block information (block 10 would have lru bits stored in entry 10 of this vector)
     std::map<CACHE*, std::vector<uint64_t>> lru_bits; //Predictor lru vector
-    std::map<CACHE*, std::vector<bool>> reuse_bits; //reuse "bits". True = reuse
+    std::map<CACHE*, std::vector<uint64_t>> reuse_bits; //Predictor reuse vector
 
     bool checkLessThanZero(int number)
     {
@@ -110,7 +110,13 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     uint64_t tag_1_hash = ((full_addr >> 4) ^ pc_0) & champsim::bitmask(8);
     uint64_t tag_2_hash = ((full_addr >> 7) ^ pc_0) & champsim::bitmask(8);
 
-    if ((pc_0_feature[pc_0_hash] + pc_1_feature[pc_1_hash] + pc_2_feature[pc_2_hash] + pc_3_feature[pc_3_hash] + tag_1_feature[tag_1_hash] + tag_2_feature[tag_2_hash]) >= bypass_threshold)
+    size_t current_reuse    = 0;
+    auto victim;
+    auto begin = std::next(std::begin(::reuse_bits[this], set * NUM_WAY));
+    auto end   = std::next(begin, current_set->NUMWAY);
+
+
+    if ((pc_0_feature[pc_0_hash] + pc_1_feature[pc_1_hash] + pc_2_feature[pc_2_hash] + pc_3_feature[pc_3_hash] + tag_1_feature[tag_1_hash] + tag_2_feature[tag_2_hash]) <= bypass_threshold)
     {
         /* BYPASS */
         return -1;
@@ -122,9 +128,18 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
         {
             /* code */
             //check to replace
+            ::reuse_bits[this].at(set * current_set->NUM_WAY + way) = current_reuse;
+            if(!current_reuse)
+            {
+                return static_cast<uint32_t>(std::distance(begin, way));
+            }
+        }
+        if(!evictees.size())
+        {
+            auto victim = std::max_element(begin, end);
         }
         
-        return static_cast<uint32_t>(std::distance())
+        return static_cast<uint32_t>victim;
     }
     
     

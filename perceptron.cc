@@ -18,9 +18,9 @@ namespace{
     size_t pc_3 = 0;
 
     //thresholds
-    constexpr size_t bypass_threshold = 3;
-    constexpr size_t replace_threshold = 124;
-    constexpr size_t sampler_threshold = 68;
+    constexpr int32_t bypass_threshold = 3;
+    constexpr int32_t replace_threshold = 124;
+    constexpr int32_t sampler_threshold = 68;
 
     //sampler entry struct -
     struct SamplerEntry {
@@ -54,12 +54,7 @@ namespace{
 
     //vectors representing extra cache block information (block 10 would have lru bits stored in entry 10 of this vector)
     std::map<CACHE*, std::vector<uint64_t>> lru_bits; //Predictor lru vector
-    std::map<CACHE*, std::vector<uint64_t>> reuse_bits; //Predictor reuse vector
-
-    bool checkLessThanZero(int number)
-    {
-        return number <= 0;
-    }
+    std::map<CACHE*, std::vector<bool>> reuse_bits; //Predictor reuse vector
 }
 
 /*************************************************************************/
@@ -119,57 +114,31 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     yout += ::tag_2_feature[tag_2_hash];
 
     size_t current_reuse    = 0;
-    auto victim;
-    auto begin = std::next(std::begin(::reuse_bits[this], set * NUM_WAY));
-    auto end   = std::next(begin, current_set->NUMWAY);
-
-
     if (yout > bypass_threshold)
     {
         /* BYPASS */
         // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies
-        return this->NUM_WAY;
+        return NUM_WAY;
     }
     else
     {
-        /* REPLACE WAY */
-        for (auto way = 0; way < NUM_WAY; way++)
+        //check for bit not marked for reuse
+        for (uint32_t way = 0; way < NUM_WAY; way++)
         {
-            /* code */
-            //check to replace
-            ::reuse_bits[this].at(set * current_set->NUM_WAY + way) = current_reuse;
+            ::reuse_bits[this].at(set * NUM_WAY + way) = current_reuse;
             if(!current_reuse)
             {
-                return static_cast<uint32_t>(std::distance(begin, way));
+                return static_cast<uint32_t>(way);
             }
         }
-        if(!evictees.size())
-        {
-            auto victim = std::max_element(begin, end);
-        }
-        
-        return static_cast<uint32_t>victim;
+
+        //as a backup we check LRU
+        auto lru_begin = std::next(std::begin(::lru_bits[this]), set * NUM_WAY);
+        auto lru_end = std::next(lru_begin, NUM_WAY);
+        auto victim = std::min_element(lru_begin, lru_end);  
+        return static_cast<uint32_t>(std::distance(lru_begin,victim));
     }
     
-    
-
-
-    /* IMPLEMENTATION SIMILAR TO SHiP*/
-//     auto begin_iterator = std::next(std::begin(::reuse_bits[this]), set * NUM_WAY);
-//     auto end_iterator   = std::next(begin_iterator, NUM_WAY);
-//     auto victim         = std::find_if(begin_itertor, end_iterator, ::checkLessThanZero());
-
-//     while (victim == end_iterator)
-//     {
-//         for (auto it = 0; it != end_itertor; it++)
-//         {
-//             ++(*it);
-//         }
-//         victim  = std::find_if(begin_itertor, end_iterator, ::checkLessThanZero());
-//     }
-    
-//     assert(begin_iterator <= victim);
-//     return static_cast<uint32_t>(std::distance(begin, victim));
 }
 
 /*************************************************************************/
@@ -184,6 +153,9 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 
 void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit)
 {
+    //UPDATE LRU BITS
+    ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
+    
     //NOTE: using bitmask to get rid of extra bits because our theoretical cache only stores 8 bits per feature
     //feature values
     pc_3 = pc_2;

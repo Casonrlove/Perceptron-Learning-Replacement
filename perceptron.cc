@@ -40,12 +40,12 @@ namespace{
 
     // 6 feature tables (from the paper), 256 entries of 6 bits saturating counters [-32, +31]
     // index via -> (hashed feature value) XOR (PC)
-    std::vector<int> pc_0_feature(256); // 1)PCi shifted right by 2, for i = 0.
-    std::vector<int> pc_1_feature(256); // 2)The three values of PCi shifted right by i, for 1 ≤ i ≤ 3.
-    std::vector<int> pc_2_feature(256);
-    std::vector<int> pc_3_feature(256);
-    std::vector<int> tag_1_feature(256); // 3)The tag of the current block shifted right by 4,
-    std::vector<int> tag_2_feature(256); // 4)The tag of the current block shifted right by 7.
+    std::vector<int32_t> pc_0_feature(256); // 1)PCi shifted right by 2, for i = 0.
+    std::vector<int32_t> pc_1_feature(256); // 2)The three values of PCi shifted right by i, for 1 ≤ i ≤ 3.
+    std::vector<int32_t> pc_2_feature(256);
+    std::vector<int32_t> pc_3_feature(256);
+    std::vector<int32_t> tag_1_feature(256); // 3)The tag of the current block shifted right by 4,
+    std::vector<int32_t> tag_2_feature(256); // 4)The tag of the current block shifted right by 7.
     
     //vectors representing physical tables (vectors are mapped to their corresponding cache via its address)
 
@@ -192,15 +192,13 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
 
     //use hashed features as index in feature table to access weights and sum all the weights and calc yout
     //since weights are signed, summation is signed
-    int32_t yout;
-    int32_t summed_weight = 0;
-    summed_weight += pc_0_feature[pc_0_hash];
-    summed_weight += pc_1_feature[pc_1_hash];
-    summed_weight += pc_2_feature[pc_2_hash];
-    summed_weight += pc_3_feature[pc_3_hash];
-    summed_weight += tag_1_feature[tag_1_hash];
-    summed_weight += tag_2_feature[tag_2_hash];
-    yout = summed_weight;
+    int32_t yout = 0;
+    yout += pc_0_feature[pc_0_hash];
+    yout += pc_1_feature[pc_1_hash];
+    yout += pc_2_feature[pc_2_hash];
+    yout += pc_3_feature[pc_3_hash];
+    yout += tag_1_feature[tag_1_hash];
+    yout += tag_2_feature[tag_2_hash];
 
     //update reuse bit with current yout
     if (yout < replace_threshold) {
@@ -231,9 +229,26 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
         if (tag_found != end) {
             //decrement weights of feature table for current features if Yout is above the theta threshold
             SamplerEntry* old_sample = &(*tag_found);
-            if (old_sample->yout > sampler_threshold)
-                //TODO: decrement weights
-            
+            if (old_sample->yout > sampler_threshold) {
+                if (pc_0_feature[pc_0_hash] > -32) {
+                    pc_0_feature[pc_0_hash]--;
+                }
+                if (pc_1_feature[pc_1_hash] > -32) {
+                    pc_1_feature[pc_1_hash]--;
+                }
+                if (pc_2_feature[pc_2_hash] > -32) {
+                    pc_2_feature[pc_2_hash]--;
+                }
+                if (pc_3_feature[pc_3_hash] > -32) {
+                    pc_3_feature[pc_3_hash]--;
+                }
+                if (tag_1_feature[tag_1_hash] > -32) {
+                    tag_1_feature[tag_1_hash]--;
+                }
+                if (tag_2_feature[tag_2_hash] > -32) {
+                    tag_2_feature[tag_2_hash]--;
+                }
+            }
             //update the current sample's hashed feature values, Yout, and LRU value
             *old_sample = { full_addr, current_cycle, yout, pc_0_hash, pc_1_hash, pc_2_hash, pc_3_hash, tag_1_hash, tag_2_hash };
         }
@@ -244,16 +259,30 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
 
             //check stored yout of that sample, compare to threshold, if below the theta threshold, we increment the weights for the corresponding feature maps
             if (throwaway_sample->yout < sampler_threshold) {
-                //TODO: increment weights
+                if (pc_0_feature[pc_0_hash] < 31) {
+                    pc_0_feature[pc_0_hash]++;
+                }
+                if (pc_1_feature[pc_1_hash] < 31) {
+                    pc_1_feature[pc_1_hash]++;
+                }
+                if (pc_2_feature[pc_2_hash] < 31) {
+                    pc_2_feature[pc_2_hash]++;
+                }
+                if (pc_3_feature[pc_3_hash] < 31) {
+                    pc_3_feature[pc_3_hash]++;
+                }
+                if (tag_1_feature[tag_1_hash] < 31) {
+                    tag_1_feature[tag_1_hash]++;
+                }
+                if (tag_2_feature[tag_2_hash] < 31) {
+                    tag_2_feature[tag_2_hash]++;
+                }
             }
                 
             //replace sample struct with new struct that has current hashed feature values as well as the current cache block's Yout, tag, and lru (clock cycle)
             *throwaway_sample = { full_addr, current_cycle, yout, pc_0_hash, pc_1_hash, pc_2_hash, pc_3_hash, tag_1_hash, tag_2_hash };
         }
     }
-
-    //NOTE: for saturating counters, dont forget to make sure they saturate at the algorithm's specifcation
-    //  for example, a "6 bit saturating counter" that uses int_32t, should saturate between -32 or 32, not 2 billion or whatever
 
 
   //LRU stuff (backup)

@@ -110,13 +110,21 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     uint64_t tag_1_hash = ((full_addr >> 4) ^ pc_0) & champsim::bitmask(8);
     uint64_t tag_2_hash = ((full_addr >> 7) ^ pc_0) & champsim::bitmask(8);
 
+    int32_t yout = 0;
+    yout += ::pc_0_feature[pc_0_hash];
+    yout += ::pc_1_feature[pc_1_hash];
+    yout += ::pc_2_feature[pc_2_hash];
+    yout += ::pc_3_feature[pc_3_hash];
+    yout += ::tag_1_feature[tag_1_hash];
+    yout += ::tag_2_feature[tag_2_hash];
+
     size_t current_reuse    = 0;
     auto victim;
     auto begin = std::next(std::begin(::reuse_bits[this], set * NUM_WAY));
     auto end   = std::next(begin, current_set->NUMWAY);
 
 
-    if ((pc_0_feature[pc_0_hash] + pc_1_feature[pc_1_hash] + pc_2_feature[pc_2_hash] + pc_3_feature[pc_3_hash] + tag_1_feature[tag_1_hash] + tag_2_feature[tag_2_hash]) <= bypass_threshold)
+    if (yout > bypass_threshold)
     {
         /* BYPASS */
         // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies

@@ -119,7 +119,8 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     if ((pc_0_feature[pc_0_hash] + pc_1_feature[pc_1_hash] + pc_2_feature[pc_2_hash] + pc_3_feature[pc_3_hash] + tag_1_feature[tag_1_hash] + tag_2_feature[tag_2_hash]) <= bypass_threshold)
     {
         /* BYPASS */
-        return -1;
+        // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies
+        return this->NUM_WAY;
     }
     else
     {
@@ -193,12 +194,12 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
     //use hashed features as index in feature table to access weights and sum all the weights and calc yout
     //since weights are signed, summation is signed
     int32_t yout = 0;
-    yout += pc_0_feature[pc_0_hash];
-    yout += pc_1_feature[pc_1_hash];
-    yout += pc_2_feature[pc_2_hash];
-    yout += pc_3_feature[pc_3_hash];
-    yout += tag_1_feature[tag_1_hash];
-    yout += tag_2_feature[tag_2_hash];
+    yout += ::pc_0_feature[pc_0_hash];
+    yout += ::pc_1_feature[pc_1_hash];
+    yout += ::pc_2_feature[pc_2_hash];
+    yout += ::pc_3_feature[pc_3_hash];
+    yout += ::tag_1_feature[tag_1_hash];
+    yout += ::tag_2_feature[tag_2_hash];
 
     //update reuse bit with current yout
     if (yout < replace_threshold) {
@@ -230,23 +231,23 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
             //decrement weights of feature table for current features if Yout is above the theta threshold
             SamplerEntry* old_sample = &(*tag_found);
             if (old_sample->yout > sampler_threshold) {
-                if (pc_0_feature[pc_0_hash] > -32) {
-                    pc_0_feature[pc_0_hash]--;
+                if (::pc_0_feature[pc_0_hash] > -32) {
+                    ::pc_0_feature[pc_0_hash]--;
                 }
-                if (pc_1_feature[pc_1_hash] > -32) {
-                    pc_1_feature[pc_1_hash]--;
+                if (::pc_1_feature[pc_1_hash] > -32) {
+                    ::pc_1_feature[pc_1_hash]--;
                 }
-                if (pc_2_feature[pc_2_hash] > -32) {
-                    pc_2_feature[pc_2_hash]--;
+                if (::pc_2_feature[pc_2_hash] > -32) {
+                    ::pc_2_feature[pc_2_hash]--;
                 }
-                if (pc_3_feature[pc_3_hash] > -32) {
-                    pc_3_feature[pc_3_hash]--;
+                if (::pc_3_feature[pc_3_hash] > -32) {
+                    ::pc_3_feature[pc_3_hash]--;
                 }
-                if (tag_1_feature[tag_1_hash] > -32) {
-                    tag_1_feature[tag_1_hash]--;
+                if (::tag_1_feature[tag_1_hash] > -32) {
+                    ::tag_1_feature[tag_1_hash]--;
                 }
-                if (tag_2_feature[tag_2_hash] > -32) {
-                    tag_2_feature[tag_2_hash]--;
+                if (::tag_2_feature[tag_2_hash] > -32) {
+                    ::tag_2_feature[tag_2_hash]--;
                 }
             }
             //update the current sample's hashed feature values, Yout, and LRU value
@@ -259,23 +260,23 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
 
             //check stored yout of that sample, compare to threshold, if below the theta threshold, we increment the weights for the corresponding feature maps
             if (throwaway_sample->yout < sampler_threshold) {
-                if (pc_0_feature[pc_0_hash] < 31) {
-                    pc_0_feature[pc_0_hash]++;
+                if (::pc_0_feature[pc_0_hash] < 31) {
+                    ::pc_0_feature[pc_0_hash]++;
                 }
-                if (pc_1_feature[pc_1_hash] < 31) {
-                    pc_1_feature[pc_1_hash]++;
+                if (::pc_1_feature[pc_1_hash] < 31) {
+                    ::pc_1_feature[pc_1_hash]++;
                 }
-                if (pc_2_feature[pc_2_hash] < 31) {
-                    pc_2_feature[pc_2_hash]++;
+                if (::pc_2_feature[pc_2_hash] < 31) {
+                    ::pc_2_feature[pc_2_hash]++;
                 }
-                if (pc_3_feature[pc_3_hash] < 31) {
-                    pc_3_feature[pc_3_hash]++;
+                if (::pc_3_feature[pc_3_hash] < 31) {
+                    ::pc_3_feature[pc_3_hash]++;
                 }
-                if (tag_1_feature[tag_1_hash] < 31) {
-                    tag_1_feature[tag_1_hash]++;
+                if (::tag_1_feature[tag_1_hash] < 31) {
+                    ::tag_1_feature[tag_1_hash]++;
                 }
-                if (tag_2_feature[tag_2_hash] < 31) {
-                    tag_2_feature[tag_2_hash]++;
+                if (::tag_2_feature[tag_2_hash] < 31) {
+                    ::tag_2_feature[tag_2_hash]++;
                 }
             }
                 

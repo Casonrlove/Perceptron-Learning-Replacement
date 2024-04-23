@@ -112,15 +112,16 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     yout += ::pc_3_feature[pc_3_hash];
     yout += ::tag_1_feature[tag_1_hash];
     yout += ::tag_2_feature[tag_2_hash];
+    size_t current_reuse = 0;
 
-    size_t current_reuse    = 0;
-    if (yout > bypass_threshold && (type != champsim::to_underlying(access_type::WRITE)))
-    {
+    //For now, skipping bypass because it was causing issues
+    //if (yout > bypass_threshold && (type != champsim::to_underlying(access_type::WRITE)))
+    //{
         /* BYPASS */
-        // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies
-        return NUM_WAY;
-    }
-    else
+    //    // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies
+    //    return NUM_WAY;
+    //}
+    //else
     {
         //check for bit not marked for reuse
         for (uint32_t way = 0; way < NUM_WAY; way++)
@@ -153,8 +154,20 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 
 void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit)
 {
+
+    //On write back we don't train sampler
+    //If its a new block during write back we have to give it an LRU cycle
+    if (access_type{ type } == access_type::WRITE) {
+        if(!hit)
+            ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
+
+
+        return;
+    }
+
+
     //UPDATE LRU BITS
-    ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
+        ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
     
     //NOTE: using bitmask to get rid of extra bits because our theoretical cache only stores 8 bits per feature
     //feature values
@@ -265,12 +278,6 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
         }
     }
 
-
-  //LRU stuff (backup)
-  // Mark the way as being used on the current cycle
-  //
-  //if (!hit || access_type{type} != access_type::WRITE) // Skip this for writeback hits
-   // ::last_used_cycles[this].at(set * NUM_WAY + way) = current_cycle;
 }
 
 /*************************************************************************/

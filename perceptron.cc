@@ -114,7 +114,7 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     yout += ::tag_2_feature[tag_2_hash];
 
     size_t current_reuse    = 0;
-    if (yout > bypass_threshold)
+    if (yout > bypass_threshold && (type != champsim::to_underlying(access_type::WRITE)))
     {
         /* BYPASS */
         // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies

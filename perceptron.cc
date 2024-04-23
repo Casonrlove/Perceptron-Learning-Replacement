@@ -183,11 +183,11 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
 
     //update reuse bit with current yout
     if (yout < replace_threshold) {
-        reuse_bits[this].at(NUM_SET * set + way) = true;
+        reuse_bits[this].at(set * NUM_WAY + way) = true;
     }
     else
     {
-        reuse_bits[this].at(NUM_SET * set + way) = false;
+        reuse_bits[this].at(set * NUM_WAY + way) = false;
     }
 
     /* SAMPLER STUFF */

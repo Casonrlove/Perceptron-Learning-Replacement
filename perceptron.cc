@@ -153,16 +153,14 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit)
 {
 
-    //On write back we don't train sampler
-    //If its a new block during write back we have to give it an LRU cycle
-    if (access_type{ type } == access_type::WRITE) {
-        if(!hit)
-            ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
-        return;
+    if (!hit || access_type{type} != access_type::WRITE) { // Skip this for writeback hits
+        ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
     }
 
-    //UPDATE LRU BITS
-    ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
+    //On write back we don't train sampler
+    if (access_type{type} == access_type::WRITE) {
+        return;
+    }
     
     //NOTE: using bitmask to get rid of extra bits because our theoretical cache only stores 8 bits per feature
     //feature values

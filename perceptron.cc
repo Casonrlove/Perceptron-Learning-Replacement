@@ -160,6 +160,9 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
             ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
         return;
     }
+
+    //UPDATE LRU BITS
+    ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
     
     //NOTE: using bitmask to get rid of extra bits because our theoretical cache only stores 8 bits per feature
     //feature values

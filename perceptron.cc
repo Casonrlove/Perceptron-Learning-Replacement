@@ -112,7 +112,6 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     yout += ::pc_3_feature[pc_3_hash];
     yout += ::tag_1_feature[tag_1_hash];
     yout += ::tag_2_feature[tag_2_hash];
-    size_t current_reuse = 0;
 
     //For now, skipping bypass because it was causing issues
     //if (yout > bypass_threshold && (type != champsim::to_underlying(access_type::WRITE)))
@@ -122,12 +121,11 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     //    return NUM_WAY;
     //}
     //else
-    {
+    // {
         //check for bit not marked for reuse
         for (uint32_t way = 0; way < NUM_WAY; way++)
         {
-            ::reuse_bits[this].at(set * NUM_WAY + way) = current_reuse;
-            if(!current_reuse)
+            if (::reuse_bits[this].at(set * NUM_WAY + way) == false)
             {
                 return static_cast<uint32_t>(way);
             }
@@ -138,7 +136,7 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
         auto lru_end = std::next(lru_begin, NUM_WAY);
         auto victim = std::min_element(lru_begin, lru_end);  
         return static_cast<uint32_t>(std::distance(lru_begin,victim));
-    }
+    // }
     
 }
 
@@ -160,14 +158,8 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
     if (access_type{ type } == access_type::WRITE) {
         if(!hit)
             ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
-
-
         return;
     }
-
-
-    //UPDATE LRU BITS
-        ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
     
     //NOTE: using bitmask to get rid of extra bits because our theoretical cache only stores 8 bits per feature
     //feature values
@@ -253,23 +245,23 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
 
             //check stored yout of that sample, compare to threshold, if below the theta threshold, we increment the weights for the corresponding feature maps
             if (throwaway_sample->yout < sampler_threshold) {
-                if (::pc_0_feature[pc_0_hash] < 31) {
-                    ::pc_0_feature[pc_0_hash]++;
+                if (::pc_0_feature[throwaway_sample->pc_0_hash] < 31) {
+                    ::pc_0_feature[throwaway_sample->pc_0_hash]++;
                 }
-                if (::pc_1_feature[pc_1_hash] < 31) {
-                    ::pc_1_feature[pc_1_hash]++;
+                if (::pc_1_feature[throwaway_sample->pc_1_hash] < 31) {
+                    ::pc_1_feature[throwaway_sample->pc_1_hash]++;
                 }
-                if (::pc_2_feature[pc_2_hash] < 31) {
-                    ::pc_2_feature[pc_2_hash]++;
+                if (::pc_2_feature[throwaway_sample->pc_2_hash] < 31) {
+                    ::pc_2_feature[throwaway_sample->pc_2_hash]++;
                 }
-                if (::pc_3_feature[pc_3_hash] < 31) {
-                    ::pc_3_feature[pc_3_hash]++;
+                if (::pc_3_feature[throwaway_sample->pc_3_hash] < 31) {
+                    ::pc_3_feature[throwaway_sample->pc_3_hash]++;
                 }
-                if (::tag_1_feature[tag_1_hash] < 31) {
-                    ::tag_1_feature[tag_1_hash]++;
+                if (::tag_1_feature[throwaway_sample->tag_shift_1] < 31) {
+                    ::tag_1_feature[throwaway_sample->tag_shift_1]++;
                 }
-                if (::tag_2_feature[tag_2_hash] < 31) {
-                    ::tag_2_feature[tag_2_hash]++;
+                if (::tag_2_feature[throwaway_sample->tag_shift_2] < 31) {
+                    ::tag_2_feature[throwaway_sample->tag_shift_2]++;
                 }
             }
                 

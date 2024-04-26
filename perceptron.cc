@@ -71,14 +71,10 @@ void CACHE::initialize_replacement() {
     //initialize sampler vector, cache reuse bits and backup LRU bits
     ::sampler_table[this] = std::vector<SamplerEntry>(::sampler_sets * ::sampler_num_ways);
     ::reuse_bits[this] = std::vector<bool>(NUM_SET * NUM_WAY, false);
-    ::lru_bits[this] = std::vector<uint64_t>(NUM_SET * NUM_WAY, current_cycle);
+    ::lru_bits[this] = std::vector<uint64_t>(NUM_SET * NUM_WAY);
 
-    //random number (borrowing this idea from other champsim replacement code because I don't know whether I'm allowed to include new libs like <time> and <cstdlib>
-    uint64_t random_number = 122053342;
-    uint64_t random_offset = 1146;
-    for (int i = 0; i < sampler_sets; i++) {
-        ::sampler_cache_sets[this].push_back(random_number % sampler_sets);
-        random_number = random_number * random_number + random_offset;
+    for (size_t i = 0; i < sampler_sets; i++) {
+        ::sampler_cache_sets[this].push_back(i * (NUM_SET / sampler_sets));
     }
 }
 
@@ -114,14 +110,14 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     yout += ::tag_2_feature[tag_2_hash];
 
     //For now, skipping bypass because it was causing issues
-    //if (yout > bypass_threshold && (type != champsim::to_underlying(access_type::WRITE)))
+    //if (yout >= bypass_threshold && (access_type{type} != access_type::WRITE))
     //{
-        /* BYPASS */
+    //    /* BYPASS */
     //    // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies
     //    return NUM_WAY;
     //}
     //else
-    // {
+    //{
         //check for bit not marked for reuse
         for (uint32_t way = 0; way < NUM_WAY; way++)
         {
@@ -136,7 +132,7 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
         auto lru_end = std::next(lru_begin, NUM_WAY);
         auto victim = std::min_element(lru_begin, lru_end);  
         return static_cast<uint32_t>(std::distance(lru_begin,victim));
-    // }
+    //}
     
 }
 
@@ -153,15 +149,11 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit)
 {
 
-    if (!hit || access_type{type} != access_type::WRITE) { // Skip this for writeback hits
-        ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
-    }
-
-    //On write back we don't train sampler
-    if (access_type{type} == access_type::WRITE) {
+    if (hit && access_type{type} == access_type::WRITE) { // Skip this for writeback hits
         return;
     }
     
+    ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
     //NOTE: using bitmask to get rid of extra bits because our theoretical cache only stores 8 bits per feature
     //feature values
     pc_3 = pc_2;

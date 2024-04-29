@@ -30,9 +30,9 @@ namespace {
 
 
     //thresholds
-    constexpr int32_t bypass_threshold = 3;
-    constexpr int32_t replace_threshold = 35;
-    constexpr int32_t sampler_threshold = 20;
+    constexpr int32_t bypass_threshold = 15;
+    constexpr int32_t replace_threshold = 127;
+    constexpr int32_t sampler_threshold = 127;
 
     //sampler entry struct -
     struct SamplerEntry {
@@ -128,8 +128,8 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
         /* BYPASS */
         // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies
         bypass_count++;
-        if (bypass_count % 100000 == 0)
-            printf("bypass count: %ul", bypass_count);
+        //   if (bypass_count % 100000 == 0)
+         //      printf("bypass count: %ul", bypass_count);
         return NUM_WAY;
     }
     else
@@ -140,8 +140,8 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
             if (::reuse_bits[this].at(set * NUM_WAY + way) == false)
             {
                 reuse_counter++;
-                if (reuse_counter % 10000 == 0)
-                    printf("\n REUSE: %d", reuse_counter);
+                //          if (reuse_counter % 10000 == 0)
+                    //          printf("\n REUSE: %d", reuse_counter);
                 return static_cast<uint32_t>(way);
             }
         }
@@ -149,8 +149,8 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 
     //as a backup we check LRU
     lru_counter++;
-    if (lru_counter % 10000 == 0)
-        printf("\n lru: %d", lru_counter);
+    //  if (lru_counter % 10000 == 0)
+       //   printf("\n lru: %d", lru_counter);
     auto lru_begin = std::next(std::begin(::lru_bits[this]), set * NUM_WAY);
     auto lru_end = std::next(lru_begin, NUM_WAY);
     auto victim = std::min_element(lru_begin, lru_end);
@@ -181,14 +181,11 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
     sample_count++;
 
     //updating PC values
-    //for some reason this function is called many times for the same IP value
-    //The if statement is a workaround (not sure if it actually helps, need more testing)
-    if (pc_0 != ip) {
-        pc_3 = pc_2;
-        pc_2 = pc_1;
-        pc_1 = pc_0;
-        pc_0 = ip;
-    }
+    pc_3 = pc_2;
+    pc_2 = pc_1;
+    pc_1 = pc_0;
+    pc_0 = ip;
+
 
     ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
 
@@ -242,7 +239,7 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
             //decrement weights of feature table for current features if Yout is above the theta threshold
             SamplerEntry* old_sample = &(*tag_found);
 
-            if (old_sample->yout > -sampler_threshold) {
+            if (old_sample->yout > sampler_threshold) {
                 if (::pc_0_feature[pc_0_hash] > -32) {
                     ::pc_0_feature[pc_0_hash]--;
                 }

@@ -13,19 +13,19 @@ namespace {
     size_t lru_counter;
     size_t reuse_counter;
     size_t sample_count;
-
+    
     /* ATTRIBUTES */
 
     //Vars for keeping track of previous PCs
-    volatile size_t pc_0 = 0;
-    volatile size_t pc_1 = 0;
-    volatile size_t pc_2 = 0;
-    volatile size_t pc_3 = 0;
+    uint64_t pc_0 = 0;
+    uint64_t pc_1 = 0;
+    uint64_t pc_2 = 0;
+    uint64_t pc_3 = 0;
 
     //thresholds
     constexpr int32_t bypass_threshold = 3;
-    constexpr int32_t replace_threshold = 127;
-    constexpr int32_t sampler_threshold = 64;
+    constexpr int32_t replace_threshold = 124;
+    constexpr int32_t sampler_threshold = 67;
 
     //sampler entry struct -
     struct SamplerEntry {
@@ -114,31 +114,31 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     yout += ::tag_1_feature[tag_1_hash];
     yout += ::tag_2_feature[tag_2_hash];
 
-    //For now, skipping bypass because it was causing issues
-    //if (yout >= bypass_threshold && (access_type{type} != access_type::WRITE))
-    //{
-    //    /* BYPASS */
-    //    // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies
-    //    return NUM_WAY;
-    //}
-    //else
-    //{
-        //check for bit not marked for reuse
-    for (uint32_t way = 0; way < NUM_WAY; way++)
+    if (yout >= bypass_threshold && (access_type{type} != access_type::WRITE) && set != (NUM_SET - 1))
     {
-        if (::reuse_bits[this].at(set * NUM_WAY + way) == false)
+        /* BYPASS */
+        // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies
+        return NUM_WAY;
+    }
+    else
+    {
+        //check for bit not marked for reuse
+        for (uint32_t way = 0; way < NUM_WAY; way++)
         {
-            reuse_counter++;
-  //          if (reuse_counter % 10000 == 0)
-  //              printf("\n REUSE: %d", reuse_counter);
-            return static_cast<uint32_t>(way);
+            if (::reuse_bits[this].at(set * NUM_WAY + way) == false)
+            {
+                reuse_counter++;
+               // if (reuse_counter % 10000 == 0)
+                //    printf("\n REUSE: %d", reuse_counter);
+                return static_cast<uint32_t>(way);
+            }
         }
     }
 
     //as a backup we check LRU
     lru_counter++;
- //   if (lru_counter % 10000 == 0)
- //       printf("\n lru: %d", lru_counter);
+  //  if (lru_counter % 10000 == 0)
+   //     printf("\n lru: %d", lru_counter);
     auto lru_begin = std::next(std::begin(::lru_bits[this]), set * NUM_WAY);
     auto lru_end = std::next(lru_begin, NUM_WAY);
     auto victim = std::min_element(lru_begin, lru_end);
@@ -160,26 +160,26 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit)
 {
 
-
-
-
-
     if (!hit || access_type{ type } != access_type::WRITE) // Skip this for writeback hits
         ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
 
+    //no sampler training on writebacks
     if (access_type{ type } == access_type::WRITE) {
         return;
 
     }
-    //NOTE: using bitmask to get rid of extra bits because our theoretical cache only stores 8 bits per feature
-    //feature values
-    pc_3 = pc_2;
-    pc_2 = pc_1;
-    pc_1 = pc_0;
-    pc_0 = ip;
 
     sample_count++;
-    // printf("pc0: %lu, pc1: %lu, pc2: %lu, pc3: %lu, ip: %lu\n", pc_0, pc_1, pc_2, pc_3, ip);
+
+    //updating PC values
+    //for some reason this function is called many times for the same IP value
+    //The if statement is a workaround (not sure if it actually helps, need more testing)
+    if (pc_0 != ip) {
+        pc_3 = pc_2;
+        pc_2 = pc_1;
+        pc_1 = pc_0;
+        pc_0 = ip;
+    }
 
     ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
 
@@ -226,11 +226,12 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
         auto compare_addr = [cache_address = full_addr, mask = 15, shift = (OFFSET_BITS + champsim::lg2(::sampler_sets))](auto sampler)
             {return ((cache_address >> shift) & champsim::bitmask(15)) == ((sampler.address >> shift) & champsim::bitmask(15)); };
         auto tag_found = std::find_if(start, end, compare_addr);
+
         //if tag in sampler, we update yout, update input hash values, update LRU value, and then update weights based on prediction
         if (tag_found != end) {
             //decrement weights of feature table for current features if Yout is above the theta threshold
             SamplerEntry* old_sample = &(*tag_found);
-
+            
             if (old_sample->yout > -sampler_threshold) {
                 if (::pc_0_feature[pc_0_hash] > -32) {
                     ::pc_0_feature[pc_0_hash]--;
@@ -260,7 +261,8 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
             SamplerEntry* throwaway_sample = &(*std::min_element(start, end, compare_lru));
 
             //check stored yout of that sample, compare to threshold, if below the theta threshold, we increment the weights for the corresponding feature maps
-            if (throwaway_sample->yout < sampler_threshold) {
+            //if LRU is 0, it means we're evicting nothing, so do not learn from this
+            if (throwaway_sample->yout < sampler_threshold && throwaway_sample->lru_bits != 0) {
                 if (::pc_0_feature[throwaway_sample->pc_0_hash] < 31) {
                     ::pc_0_feature[throwaway_sample->pc_0_hash]++;
                 }

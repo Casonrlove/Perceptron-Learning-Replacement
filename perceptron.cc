@@ -9,11 +9,16 @@
 /******************************** CLASS **********************************/
 
 namespace {
+
+    //how many bits we need to shift, based on total sets a
+    uint16_t OFFSET = 0;
+
     //debug stuff
     size_t lru_counter;
     size_t reuse_counter;
     size_t sample_count;
-    
+    size_t bypass_count;
+
     /* ATTRIBUTES */
 
     //Vars for keeping track of previous PCs
@@ -22,10 +27,12 @@ namespace {
     uint64_t pc_2 = 0;
     uint64_t pc_3 = 0;
 
+
+
     //thresholds
     constexpr int32_t bypass_threshold = 3;
-    constexpr int32_t replace_threshold = 124;
-    constexpr int32_t sampler_threshold = 67;
+    constexpr int32_t replace_threshold = 35;
+    constexpr int32_t sampler_threshold = 20;
 
     //sampler entry struct -
     struct SamplerEntry {
@@ -74,6 +81,7 @@ namespace {
 
 void CACHE::initialize_replacement() {
     //initialize sampler vector, cache reuse bits and backup LRU bits
+    OFFSET = champsim::lg2(NUM_SET) + OFFSET_BITS;
     ::sampler_table[this] = std::vector<SamplerEntry>(::sampler_sets * ::sampler_num_ways);
     ::reuse_bits[this] = std::vector<bool>(NUM_SET * NUM_WAY, false);
     ::lru_bits[this] = std::vector<uint64_t>(NUM_SET * NUM_WAY);
@@ -99,12 +107,13 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     //TODO: FIND REPLACEMENT
     //first: check reuse bits for a 0.
     //second (as backup if all are marked for reuse): check backup LRU bits
+    uint64_t curr_tag = full_addr >> OFFSET;
     uint64_t pc_0_hash = ((pc_0 >> 2) ^ pc_0) & champsim::bitmask(8);
     uint64_t pc_1_hash = ((pc_1 >> 1) ^ pc_0) & champsim::bitmask(8);
     uint64_t pc_2_hash = ((pc_2 >> 2) ^ pc_0) & champsim::bitmask(8);
     uint64_t pc_3_hash = ((pc_3 >> 3) ^ pc_0) & champsim::bitmask(8);
-    uint64_t tag_1_hash = ((full_addr >> 4) ^ pc_0) & champsim::bitmask(8);
-    uint64_t tag_2_hash = ((full_addr >> 7) ^ pc_0) & champsim::bitmask(8);
+    uint64_t tag_1_hash = ((curr_tag >> 4) ^ pc_0) & champsim::bitmask(8);
+    uint64_t tag_2_hash = ((curr_tag >> 7) ^ pc_0) & champsim::bitmask(8);
 
     int32_t yout = 0;
     yout += ::pc_0_feature[pc_0_hash];
@@ -114,10 +123,13 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
     yout += ::tag_1_feature[tag_1_hash];
     yout += ::tag_2_feature[tag_2_hash];
 
-    if (yout >= bypass_threshold && (access_type{type} != access_type::WRITE) && set != (NUM_SET - 1))
+    if (yout >= bypass_threshold && (access_type{ type } != access_type::WRITE) && set != (NUM_SET - 1))
     {
         /* BYPASS */
         // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies
+        bypass_count++;
+        if (bypass_count % 100000 == 0)
+            printf("bypass count: %ul", bypass_count);
         return NUM_WAY;
     }
     else
@@ -128,8 +140,8 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
             if (::reuse_bits[this].at(set * NUM_WAY + way) == false)
             {
                 reuse_counter++;
-               // if (reuse_counter % 10000 == 0)
-                //    printf("\n REUSE: %d", reuse_counter);
+                if (reuse_counter % 10000 == 0)
+                    printf("\n REUSE: %d", reuse_counter);
                 return static_cast<uint32_t>(way);
             }
         }
@@ -137,14 +149,12 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 
     //as a backup we check LRU
     lru_counter++;
-  //  if (lru_counter % 10000 == 0)
-   //     printf("\n lru: %d", lru_counter);
+    if (lru_counter % 10000 == 0)
+        printf("\n lru: %d", lru_counter);
     auto lru_begin = std::next(std::begin(::lru_bits[this]), set * NUM_WAY);
     auto lru_end = std::next(lru_begin, NUM_WAY);
     auto victim = std::min_element(lru_begin, lru_end);
     return static_cast<uint32_t>(std::distance(lru_begin, victim));
-    //}
-
 }
 
 /*************************************************************************/
@@ -166,7 +176,6 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
     //no sampler training on writebacks
     if (access_type{ type } == access_type::WRITE) {
         return;
-
     }
 
     sample_count++;
@@ -184,12 +193,13 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
     ::lru_bits[this].at(set * NUM_WAY + way) = current_cycle;
 
     //feature hashes
+    uint64_t curr_tag = full_addr >> OFFSET;
     uint64_t pc_0_hash = ((pc_0 >> 2) ^ pc_0) & champsim::bitmask(8);
     uint64_t pc_1_hash = ((pc_1 >> 1) ^ pc_0) & champsim::bitmask(8);
     uint64_t pc_2_hash = ((pc_2 >> 2) ^ pc_0) & champsim::bitmask(8);
     uint64_t pc_3_hash = ((pc_3 >> 3) ^ pc_0) & champsim::bitmask(8);
-    uint64_t tag_1_hash = ((full_addr >> 4) ^ pc_0) & champsim::bitmask(8);
-    uint64_t tag_2_hash = ((full_addr >> 7) ^ pc_0) & champsim::bitmask(8);
+    uint64_t tag_1_hash = ((curr_tag >> 4) ^ pc_0) & champsim::bitmask(8);
+    uint64_t tag_2_hash = ((curr_tag >> 7) ^ pc_0) & champsim::bitmask(8);
 
 
     //use hashed features as index in feature table to access weights and sum all the weights and calc yout
@@ -223,7 +233,7 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
 
         //check for tag match in the set
         //very fun lambda function that compares 15 tag bits of sampler address with 15 tag bits of incoming block address.
-        auto compare_addr = [cache_address = full_addr, mask = 15, shift = (OFFSET_BITS + champsim::lg2(::sampler_sets))](auto sampler)
+        auto compare_addr = [cache_address = full_addr, mask = 15, shift = OFFSET](auto sampler)
             {return ((cache_address >> shift) & champsim::bitmask(15)) == ((sampler.address >> shift) & champsim::bitmask(15)); };
         auto tag_found = std::find_if(start, end, compare_addr);
 
@@ -231,7 +241,7 @@ void CACHE::update_replacement_state(uint32_t triggering_cpu, uint32_t set, uint
         if (tag_found != end) {
             //decrement weights of feature table for current features if Yout is above the theta threshold
             SamplerEntry* old_sample = &(*tag_found);
-            
+
             if (old_sample->yout > -sampler_threshold) {
                 if (::pc_0_feature[pc_0_hash] > -32) {
                     ::pc_0_feature[pc_0_hash]--;

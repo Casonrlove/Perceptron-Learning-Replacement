@@ -30,8 +30,8 @@ namespace {
 
 
     //thresholds
-    constexpr int32_t bypass_threshold = 15;
-    constexpr int32_t replace_threshold = 127;
+    constexpr int32_t bypass_threshold = 10;
+    constexpr int32_t replace_threshold = 160;
     constexpr int32_t sampler_threshold = 127;
 
     //sampler entry struct -
@@ -128,8 +128,6 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
         /* BYPASS */
         // bypass should return this->NUM_WAY, https://champsim.github.io/ChampSim/master/Modules.html#replacement-policies
         bypass_count++;
-        //   if (bypass_count % 100000 == 0)
-         //      printf("bypass count: %ul", bypass_count);
         return NUM_WAY;
     }
     else
@@ -140,8 +138,6 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
             if (::reuse_bits[this].at(set * NUM_WAY + way) == false)
             {
                 reuse_counter++;
-                //          if (reuse_counter % 10000 == 0)
-                    //          printf("\n REUSE: %d", reuse_counter);
                 return static_cast<uint32_t>(way);
             }
         }
@@ -149,8 +145,6 @@ uint32_t CACHE::find_victim(uint32_t triggering_cpu, uint64_t instr_id, uint32_t
 
     //as a backup we check LRU
     lru_counter++;
-    //  if (lru_counter % 10000 == 0)
-       //   printf("\n lru: %d", lru_counter);
     auto lru_begin = std::next(std::begin(::lru_bits[this]), set * NUM_WAY);
     auto lru_end = std::next(lru_begin, NUM_WAY);
     auto victim = std::min_element(lru_begin, lru_end);
